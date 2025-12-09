@@ -6,6 +6,7 @@
 #include <string.h>		/* pour memset */
 #include <netinet/in.h> /* pour struct sockaddr_in */
 #include <arpa/inet.h>	/* pour htons et inet_aton */
+#include <ctype.h>		/* pour tolower */
 
 /* ================== DEFINE  ================== */
 #define PORT 5000		//(ports >= 5000 réservés pour usage explicite)
@@ -86,10 +87,12 @@ int main(int argc, char *argv[])
 		 *	 GESTION PARTIE PENDU
 		 *
 		 */
+
 		// déclaration variables partie pendu
 		int length_mot = strlen(DEVINER_MOT); // longueur du mot à deviner
 		int essais_restants = NB_ESSAIS_MAX;  // nombre d'essais restants
 		char masque_mot[LG_MESSAGE];		  // mot masqué envoyé au client
+		int lettres_essayees[26] = {0};		  // init tableau 26 cases à 0
 
 		// INitialisation du mot masqué
 		for (int i = 0; i < length_mot; i++)
@@ -106,20 +109,17 @@ int main(int argc, char *argv[])
 		ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 
 		// Gestion erreur envoi message start
-		if (ecrits < 0)
+		switch (ecrits)
 		{
+		case -1:
 			perror("Erreur du message");
 			close(socketDialogue);
-			continue;
-		}
-		else if (ecrits == 0)
-		{
+			continue; // continue pour relancer la boucle sans fermé le serveur
+		case 0:
 			fprintf(stderr, "La socket a été fermée par le client !\n\n");
 			close(socketDialogue);
 			continue;
-		}
-		else
-		{
+		default:
 			printf("Message envoyé : %s (%d octets)\n\n", messageEnvoye, ecrits);
 		}
 
@@ -137,52 +137,85 @@ int main(int argc, char *argv[])
 				perror("read");
 				close(socketDialogue);
 				partie_terminee = 1;
-				exit(-5);
-				case 0: /* la socket est fermée */
+				continue;
+			case 0: /* la socket est fermée */
 				fprintf(stderr, "La socket a été fermée par le client !\n\n");
 				close(socketDialogue);
 				partie_terminee = 1;
-				exit(-5);
+				continue;
 			default: /* réception de n octets */
-				printf("Message reçu : %s (%d octets)\n\n", messageRecu, lus);				
+				printf("Message reçu : %s (%d octets)\n\n", messageRecu, lus);
 			}
 			// Gestion message reçu du client
 			char proposition = messageRecu[0];
-			proposition = (char)tolower(proposition); // to lower case de la la lettre proposée
+			proposition = (char)toupper(proposition); // to lower case de la la lettre proposée
 			printf("Lettre proposée par le client : %c\n", proposition);
+
+			// GEstion hors tableau des lettres proposées
+			if (proposition < 'A' || proposition > 'Z')
+			{
+				memset(messageEnvoye, 0x00, LG_MESSAGE);
+				snprintf(messageEnvoye, LG_MESSAGE, "Lettre invalide. Veuillez proposer une lettre entre A et Z.");
+				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
+				continue; // revient au début de la boucle
+
+			} 
 			
+			// Calculer l’index dans le tableau 0..25 car les nombres sont en ASCII -> A=65 ... Z=90
+			// A=0, B=1, C=2 ... Z=25 
+			int idx = proposition - 'A'; 
+
+			// Gestion lettre déjà proposée 
+			if (lettres_essayees[idx] == 1)
+			{
+				memset(messageEnvoye, 0x00, LG_MESSAGE);
+				snprintf(messageEnvoye, LG_MESSAGE,
+						 "Lettre déjà proposée. Veuillez en proposer une autre.");
+				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
+				continue;
+			}
+			// L'index met à 1 la valeur du tableau correspondant à la lettre proposée
+			lettres_essayees[idx] = 1;
+
+			//  Vérification si la lettre proposée est dans le mot à deviner
 			int bonne_lettre = 0;
-			// Vérification si la lettre proposée est dans le mot à deviner
-			for (int i =0; i < length_mot; i++){
-				if (DEVINER_MOT[i] == proposition && masque_mot[i] == '_') {
-					masque_mot[i] = proposition; // mise à jour du mot masqué
+			for (int i = 0; i < length_mot; i++)
+			{
+				if (DEVINER_MOT[i] == proposition && masque_mot[i] == '_')
+				{
+					masque_mot[i] = proposition;
 					bonne_lettre = 1;
 				}
 			}
-			if (!bonne_lettre) {
+
+			// Si la lettre n'est pas dans le mot, on décrémente les essais restants
+			if (!bonne_lettre)
+			{
 				essais_restants--;
 			}
 			// Vérification si partie gagnée
-			if (strcmp(DEVINER_MOT, masque_mot) == 0) {
+			if (strcmp(DEVINER_MOT, masque_mot) == 0)
+			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
 				snprintf(messageEnvoye, LG_MESSAGE, "VICTOIRE LE mot était %s", DEVINER_MOT);
-				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye),0);
+				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				partie_terminee = 1;
 			}
 			// Vérification si partie perdue
-			else if (essais_restants == 0) {
+			else if (essais_restants == 0)
+			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
 				snprintf(messageEnvoye, LG_MESSAGE, "DEFAITE Le mot était %s", DEVINER_MOT);
-				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye),0);
+				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				partie_terminee = 1;
 			}
 			// COntinuer la partie
-			else {
+			else
+			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
 				snprintf(messageEnvoye, LG_MESSAGE, "Il vous reste %d essais restants. %s", essais_restants, masque_mot);
-				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye),0);
+				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 			}
-
 		}
 	}
 	// On ferme la ressource avant de quitter

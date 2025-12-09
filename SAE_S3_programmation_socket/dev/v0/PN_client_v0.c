@@ -70,48 +70,27 @@ int main(int argc, char *argv[])
 	}
 	printf("Connexion au serveur %s:%d réussie!\n", ip_dest, port_dest);
 
-	// Envoi du message
+	// Réception du message start X
 	// switch(nb = write(descripteurSocket, buffer, strlen(buffer))){
-	memset(messageDemande, 0x00, LG_MESSAGE);
-	printf("Entrez la commande (D pour date, H pour heure) : ");
-
-	if (fgets(messageDemande, LG_MESSAGE, stdin) == NULL)
+	memset(messageReponse, 0x00, LG_MESSAGE);
+	nb = recv(descripteurSocket, messageReponse, LG_MESSAGE - 1, 0); // ici appel bloquant
+	switch(nb)
 	{
-		perror("Le message est vide");
+	case -1: // une erreur !
+		perror("read");
 		close(descripteurSocket);
 		exit(-3);
-	}
-
-	nb = send(descripteurSocket, messageDemande, strlen(messageDemande) + 1, 0);
-	if (nb < 0)
-	{
-		perror("Erreur d'envoi du message");
+	case 0: // la socket est fermée
+		fprintf(stderr, "La socket a été fermée par le serveur !\n\n");
 		close(descripteurSocket);
 		exit(-4);
+	default: // réception de n octets
+		printf("Message reçu : %s (%d octets)\n\n", messageReponse, nb);
 	}
-	printf("Message envoyé au serveur (%d octets) : %s\n", nb, messageDemande);
+	// Gestion erreur réception
 
  // Réception de la réponse
-	memset(messageReponse, 0x00, LG_MESSAGE);
-	nb = recv(descripteurSocket, messageReponse, LG_MESSAGE - 1, 0);
-	if (nb < 0)
-	{
-		perror("Erreur de reception du message");
-		close(descripteurSocket);
-		exit(-5);
-	}
-	else if (nb == 0)
-	{
-		printf("Le serveur a fermé la connexion\n");
-		close(descripteurSocket);
-		exit(0);
-	}
-	else
-	{
-		messageReponse[nb] = '\0';
-		printf("Message reçu du serveur (%d octets) : %s\n", nb, messageReponse);
-	}
-
+	
 	// On ferme la ressource avant de quitter
 	close(descripteurSocket);
 
