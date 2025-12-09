@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 	}
 	printf("Message envoyé au serveur (%d octets) : %s\n", nb, messageDemande);
 
-
+ // Réception de la réponse
 	memset(messageReponse, 0x00, LG_MESSAGE);
 	nb = recv(descripteurSocket, messageReponse, LG_MESSAGE - 1, 0);
 	if (nb < 0)
