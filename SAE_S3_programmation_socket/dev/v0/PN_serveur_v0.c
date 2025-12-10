@@ -21,17 +21,17 @@ const char *DEVINER_MOT = "TEST";
 int main(int argc, char *argv[])
 {
 	int socketEcoute;
-	struct sockaddr_in pointDeRencontreLocal;
-	socklen_t longueurAdresse;
+	struct sockaddr_in pointDeRencontreLocal; // Adresse + port d’écoute du serveur
+	socklen_t longueurAdresse;				  // stocker la taille de l’adresse du socket
 
-	int socketDialogue;
-	struct sockaddr_in pointDeRencontreDistant;
-	char messageRecu[LG_MESSAGE];	/* le message de la couche Application ! */
-	char messageEnvoye[LG_MESSAGE]; /* le message de la couche Application ! */
-	int ecrits, lus;				/* nb d’octets ecrits et lus */
+	int socketDialogue;							/// Socket de dialogue avec le client
+	struct sockaddr_in pointDeRencontreDistant; // Adresse + port du client
+	char messageRecu[LG_MESSAGE];				// Buffer pour stocker le message recu
+	char messageEnvoye[LG_MESSAGE];				// Buffer pour stocker le message envoyé
+	int ecrits, lus;							/* nb d’octets ecrits et lus */
 
 	// Crée un socket de communication
-	socketEcoute = socket(AF_INET, SOCK_STREAM, 0);
+	socketEcoute = socket(AF_INET, SOCK_STREAM, 0); // Domaine Internet (IPV4), type de socket (TCPIP)
 	// Teste la valeur renvoyée par l’appel système socket()
 	if (socketEcoute < 0)
 	{
@@ -39,18 +39,16 @@ int main(int argc, char *argv[])
 		exit(-1);		  // On sort en indiquant un code erreur
 	}
 	printf("Socket créée avec succès ! (%d)\n", socketEcoute); // On prépare l’adresse d’attachement locale
-	// setsockopt()
 
 	// Remplissage de sockaddrDistant (structure sockaddr_in identifiant le point d'écoute local)
-	longueurAdresse = sizeof(pointDeRencontreLocal);
-	// memset sert à faire une copie d'un octet n fois à partir d'une adresse mémoire donnée
-	// ici l'octet 0 est recopié longueurAdresse fois à partir de l'adresse &pointDeRencontreLocal
-	memset(&pointDeRencontreLocal, 0x00, longueurAdresse);
-	pointDeRencontreLocal.sin_family = PF_INET;
-	pointDeRencontreLocal.sin_addr.s_addr = htonl(INADDR_ANY); // attaché à toutes les interfaces locales disponibles
-	pointDeRencontreLocal.sin_port = htons(PORT);			   // = 5000 ou plus
+	longueurAdresse = sizeof(pointDeRencontreLocal); // on stock la taille de la structure sockaddr_in
 
-	// On demande l’attachement local de la socket
+	memset(&pointDeRencontreLocal, 0x00, longueurAdresse);	   // memset met à zero la structure
+	pointDeRencontreLocal.sin_family = AF_INET;				   // Domaine Internet
+	pointDeRencontreLocal.sin_addr.s_addr = htonl(INADDR_ANY); // attaché à toutes les interfaces locales disponibles
+	pointDeRencontreLocal.sin_port = htons(PORT);			   // port = 5000 ou plus
+
+	// On demande l’attachement local de la socket, pour dire a la socket sur quel port écouter
 	if ((bind(socketEcoute, (struct sockaddr *)&pointDeRencontreLocal, longueurAdresse)) < 0)
 	{
 		perror("bind");
@@ -59,6 +57,7 @@ int main(int argc, char *argv[])
 	printf("Socket attachée avec succès !\n");
 
 	// On fixe la taille de la file d’attente à 5 (pour les demandes de connexion non encore traitées)
+	// On transforme la socket en socket d’écoute
 	if (listen(socketEcoute, 5) < 0)
 	{
 		perror("listen");
@@ -120,7 +119,7 @@ int main(int argc, char *argv[])
 			close(socketDialogue);
 			continue;
 		default:
-			printf("Message envoyé : %s (%d octets)\n\n", messageEnvoye, ecrits);
+			printf("[MESSAGE ENVOYE] : %s (%d octets)\n\n", messageEnvoye, ecrits);
 		}
 
 		// Boucle du jeu pendu --> Réception / envoi client
@@ -144,38 +143,35 @@ int main(int argc, char *argv[])
 				partie_terminee = 1;
 				continue;
 			default: /* réception de n octets */
-				printf("Message reçu : %s (%d octets)\n\n", messageRecu, lus);
+				printf("[MESSAGE RECU] : Lettre proposée par le client : %s (%d octets)\n\n", messageRecu, lus);
 			}
 			// Gestion message reçu du client
 			char proposition = messageRecu[0];
 			proposition = (char)toupper(proposition); // to lower case de la la lettre proposée
-			printf("Lettre proposée par le client : %c\n", proposition);
-
 			// GEstion hors tableau des lettres proposées
 			if (proposition < 'A' || proposition > 'Z')
 			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
-				snprintf(messageEnvoye, LG_MESSAGE, "Lettre invalide. Veuillez proposer une lettre entre A et Z.");
+				snprintf(messageEnvoye, LG_MESSAGE, "[MESSAGE ENVOYE] : Lettre invalide. Veuillez proposer une lettre entre A et Z.");
 				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				continue; // revient au début de la boucle
+			}
 
-			} 
-			
 			// Calculer l’index dans le tableau 0..25 car les nombres sont en ASCII -> A=65 ... Z=90
-			// A=0, B=1, C=2 ... Z=25 
-			int idx = proposition - 'A'; 
+			// A=0, B=1, C=2 ... Z=25
+			int indexTableau = proposition - 'A';
 
-			// Gestion lettre déjà proposée 
-			if (lettres_essayees[idx] == 1)
+			// Gestion lettre déjà proposée
+			if (lettres_essayees[indexTableau] == 1)
 			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
 				snprintf(messageEnvoye, LG_MESSAGE,
-						 "Lettre déjà proposée. Veuillez en proposer une autre.");
+						 "Lettre déjà proposée. Veuillez en proposer une autre."); // message envoyé au client
 				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				continue;
 			}
 			// L'index met à 1 la valeur du tableau correspondant à la lettre proposée
-			lettres_essayees[idx] = 1;
+			lettres_essayees[indexTableau] = 1;
 
 			//  Vérification si la lettre proposée est dans le mot à deviner
 			int bonne_lettre = 0;
@@ -187,7 +183,6 @@ int main(int argc, char *argv[])
 					bonne_lettre = 1;
 				}
 			}
-
 			// Si la lettre n'est pas dans le mot, on décrémente les essais restants
 			if (!bonne_lettre)
 			{
@@ -197,7 +192,7 @@ int main(int argc, char *argv[])
 			if (strcmp(DEVINER_MOT, masque_mot) == 0)
 			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
-				snprintf(messageEnvoye, LG_MESSAGE, "VICTOIRE LE mot était %s", DEVINER_MOT);
+				snprintf(messageEnvoye, LG_MESSAGE, "VICTOIRE  - Le mot était %s", DEVINER_MOT);
 				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				partie_terminee = 1;
 			}
@@ -205,7 +200,7 @@ int main(int argc, char *argv[])
 			else if (essais_restants == 0)
 			{
 				memset(messageEnvoye, 0x00, LG_MESSAGE);
-				snprintf(messageEnvoye, LG_MESSAGE, "DEFAITE Le mot était %s", DEVINER_MOT);
+				snprintf(messageEnvoye, LG_MESSAGE, "DEFAITE - Le mot était %s", DEVINER_MOT);
 				ecrits = send(socketDialogue, messageEnvoye, strlen(messageEnvoye), 0);
 				partie_terminee = 1;
 			}
@@ -218,6 +213,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	close(socketDialogue); // on ferme le dialogue pour eviter de rester sur le receive du debut
 	// On ferme la ressource avant de quitter
 	close(socketEcoute);
 	return 0;

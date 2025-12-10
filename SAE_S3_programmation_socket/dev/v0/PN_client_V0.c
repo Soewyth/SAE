@@ -10,8 +10,7 @@
 #include <strings.h>    /* pour strcasecmp (comparaison de chaînes sans casse) */
 
 #define LG_MESSAGE 256
-#define MAX_WORD_LENGTH 20  // On augmente un peu la taille pour le Pendu
-#define MSG_BUFFER_SIZE 512 // Taille pour être sûr de recevoir toute la réponse du serveur
+#define MAX_WORD_LENGTH 20 // On augmente un peu la taille pour le Pendu
 
 int main(int argc, char *argv[])
 {
@@ -20,21 +19,19 @@ int main(int argc, char *argv[])
     struct sockaddr_in sockaddrDistant;
     socklen_t longueurAdresse;
 
-    char messageDemande[LG_MESSAGE];      // Buffer pour le message que NOUS envoyons (la lettre ou "start")
-    char messageReponse[MSG_BUFFER_SIZE]; // Buffer pour la réponse que NOUS recevons du serveur
-    int nb;                               /* Nombre d’octets écrits ou lus */
+    char messageReponse[LG_MESSAGE]; // Buffer pour la réponse que nous recevons du serveur
+    char lettre_choisie[LG_MESSAGE]; // Buffer pour la lettre proposée par l'utilisateur
+    int nb;                          /* Nombre d’octets écrits ou lus */
 
-    char bufferReception[MSG_BUFFER_SIZE]; // Buffer générique (on pourrait utiliser messageReponse)
-    char ip_dest[16];                      // Adresse IP du serveur
-    int port_dest;                         // Port du serveur
+    char ip_dest[16]; // Adresse IP du serveur
+    int port_dest;    // Port du serveur
 
     // --- Variables d'état du jeu (le client doit les gérer pour l'affichage) ---
-    char mot_affiche[MAX_WORD_LENGTH]; // Le mot avec les tirets et les lettres trouvées (ex: T_ST)
-    char lettre_choisie[20];           // Buffer pour la lettre proposée par l'utilisateur
+    char mot_affiche[MAX_WORD_LENGTH]; // Le mot avec les tirets et les lettres trouvées (ex: T__T)
     int longueur_mot = 0;              // La longueur du mot (définie par la ligne de commande)
     int partie_en_cours = 0;           // Vaut 1 si on joue, 0 si c'est fini
 
-    char status_mot[10];     // Pour lire le début du message du serveur (ex: "start", "victoire")
+    char status_mot[20];     // Pour lire le début du message du serveur (ex: "start", "victoire")
     int essais_restants = 0; // Nombre d'essais restants (information donnée par le serveur)
 
     // Le client a besoin de l'IP, du port et de la longueur du mot à deviner.
@@ -61,17 +58,11 @@ int main(int argc, char *argv[])
 
     // Remplissage de sockaddrDistant (structure sockaddr_in identifiant la machine distante)
     // Obtient la longueur en octets de la structure sockaddr_in
-    longueurAdresse = sizeof(sockaddrDistant);
-    // Initialise à 0 la structure sockaddr_in
-    // memset sert à faire une copie d'un octet n fois à partir d'une adresse mémoire donnée
-    // ici l'octet 0 est recopié longueurAdresse fois à partir de l'adresse &sockaddrDistant
-    memset(&sockaddrDistant, 0x00, longueurAdresse);
-    // Renseigne la structure sockaddr_in avec les informations du serveur distant
-    sockaddrDistant.sin_family = AF_INET;
-    // On choisit le numéro de port d’écoute du serveur
-    sockaddrDistant.sin_port = htons(port_dest);
-    // On choisit l’adresse IPv4 du serveur
-    inet_aton(ip_dest, &sockaddrDistant.sin_addr);
+    longueurAdresse = sizeof(sockaddrDistant);       // on stock la taille de la structure sockaddr_in
+    memset(&sockaddrDistant, 0x00, longueurAdresse); // memset met à zero la structure
+    sockaddrDistant.sin_family = AF_INET;            // Domaine Internet
+    sockaddrDistant.sin_port = htons(port_dest);     // Numéro de port du serveur
+    inet_aton(ip_dest, &sockaddrDistant.sin_addr);   // Conversion de l’adresse IP
 
     // Débute la connexion vers le processus serveur distant
     if ((connect(descripteurSocket, (struct sockaddr *)&sockaddrDistant, longueurAdresse)) == -1)
@@ -82,16 +73,24 @@ int main(int argc, char *argv[])
     }
     printf("Connexion au serveur %s:%d réussie!\n", ip_dest, port_dest);
 
-    // Ensuite, le client attend la réponse du serveur pour démarrer
-    nb = recv(descripteurSocket, messageReponse, MSG_BUFFER_SIZE - 1, 0);
+    // Réception du message de démarrage du serveur
+    memset(messageReponse, 0x00, LG_MESSAGE);
+    nb = recv(descripteurSocket, messageReponse, LG_MESSAGE - 1, 0);
 
-    if (nb <= 0)
+    if (nb < 0)
     {
-        fprintf(stderr, "Serveur a coupé la connexion ou erreur de réception.\n");
+        perror("Erreur de réception du message de démarrage...");
         close(descripteurSocket);
-        exit(0);
+        exit(-3);
+    }
+    if (nb == 0)
+    {
+        fprintf(stderr, "Le serveur a coupé la connexion avant le début du jeu.\n");
+        close(descripteurSocket);
+        exit(-4);
     }
     messageReponse[nb] = '\0';
+    printf("[MESSAGE RECU] : %s\n", messageReponse);
 
     // Le serveur doit répondre : "start [longueur] [masque]" (ex: "start 4 ____")
     if (sscanf(messageReponse, "%s %d %s", status_mot, &longueur_mot, mot_affiche) == 3)
@@ -110,22 +109,19 @@ int main(int argc, char *argv[])
     while (partie_en_cours)
     {
 
-        printf("Mot actuel : %s\n", mot_affiche);
         printf("Proposez une lettre (et appuyez sur Entree) : ");
-
+        // En lecture de la lettre choisie par l'utilisateur
         if (fgets(lettre_choisie, sizeof(lettre_choisie), stdin) == NULL)
         {
             fprintf(stderr, "Erreur de lecture de la lettre.\n");
             continue; // Recommence la boucle
         }
-    
-        // On vérifie que ce que l'utilisateur a tapé est bien une seule lettre
 
         nb = send(descripteurSocket, lettre_choisie, strlen(lettre_choisie), 0); // On envoie la lettre + '\0'
-        printf("Lettre envoyée: %s\n", lettre_choisie);
+        printf("[MESSAGE ENVOYE] Lettre envoyée: %s\n", lettre_choisie);
 
-        memset(messageReponse, 0x00, MSG_BUFFER_SIZE);
-        nb = recv(descripteurSocket, messageReponse, MSG_BUFFER_SIZE - 1, 0);
+        memset(messageReponse, 0x00, LG_MESSAGE);
+        nb = recv(descripteurSocket, messageReponse, LG_MESSAGE - 1, 0);
 
         if (nb <= 0)
         {
@@ -134,31 +130,33 @@ int main(int argc, char *argv[])
             break;
         }
         messageReponse[nb] = '\0';
-        printf("Reponse du Serveur : %s\n", messageReponse);
+        printf("[MESSAGE RECU] : %s\n", messageReponse);
 
-        // 1. Victoire ou Défaite (messages de fin)
-        if (strncasecmp(messageReponse, "victoire", 8) == 0)
+        //  GEstion victoire
+        // strcasestr permet de chercher une sous-chaîne (insensitive case)
+        if (strcasestr(messageReponse, "VICTOIRE") != NULL)
         {
-            printf("\nVICTOIRE ! Fin du jeu.\n");
+            printf("\nVous avez gagné !\n");
             partie_en_cours = 0;
+            break;
         }
-        else if (strncasecmp(messageReponse, "defaite", 7) == 0)
+        // GEstion défaite
+        // strcasestr permet de chercher une sous-chaîne (insensitive case)
+        if (strcasestr(messageReponse, "DEFAITE") != NULL)
         {
-            printf("\nDEFAITE ! Fin du jeu.\n");
+            printf("\n Vous avez perdu...\n");
             partie_en_cours = 0;
+            break;
         }
-        // Le serveur envoie : "Il vous reste [X] essais restants. [masque]"
-        else if (sscanf(messageReponse, "Il vous reste %d essais restants. %s",
-                        &essais_restants, mot_affiche) == 2)
-        {
 
-            // Le client met à jour son affichage avec le masque envoyé par le serveur
-            printf("\n--- %d essais restants. Nouvel état: %s ---\n", essais_restants, mot_affiche);
-        }
-        else
-        {
-            printf("\n[ERREUR PROTOCOLE] Reponse serveur inattendue.\n");
-        }
+        // GEstion du message de mise à jour
+        // if (sscanf(messageReponse,
+        //            "Il vous reste %d essais restants. %s",
+        //            &essais_restants, mot_affiche) == 2)
+        // {
+        //     printf("\n--- %d essais restants. Nouvel état: %s ---\n",
+        //            essais_restants, mot_affiche);
+        // }
     }
 
     printf("\nPartie terminee. Fermeture de la socket.\n");
