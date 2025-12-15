@@ -96,96 +96,126 @@ int main(int argc, char *argv[])
 		}
 		printf("[SERVEUR] Joueur 2 connecté !\n");
 
-		// ====================  RECUPERER MOT A DEVINER ====================
-		// On reçoit le mot à deviner du joueur 1
-		memset(bufferGeneral, 0x00, LG_MESSAGE);
-		lus = recv(socketJ1, bufferGeneral, LG_MESSAGE - 1, 0);
-		if (lus <= 0)
+		// V3 gère la partie dans un processus fils
+		// Le proccesssus père lui va attendre une nouvelle partie
+		// -1 erreur de fork
+		pid_t pid;
+		pid = fork();
+
+		switch (pid)
 		{
-			perror("Erreur de réception du mot à deviner depuis J1");
+		case -1:
+			perror("Erreur de fork");
 			close(socketJ1);
 			close(socketJ2);
 			continue; // On repasse à une nouvelle partie retour début boucle
-		}
-		bufferGeneral[lus] = '\0'; // On termine la chaîne reçue
-		printf("[SERVEUR] Mot à deviner reçu de J1 : %s\n",
-			   bufferGeneral);
+		case 0:
+			// Processus fils : gestion de la partie
+			printf("[SERVEUR - FILS - PID : %d] Démarrage de la partie : \n", getpid());
 
-		ecrits = send(socketJ2, bufferGeneral, strlen(bufferGeneral), 0);
-		if (ecrits <= 0)
-		{
-			perror("Erreur d'envoi du mot à deviner à J2");
-			close(socketJ1);
-			close(socketJ2);
-			continue; // On repasse à une nouvelle partie retour début boucle
-		}
-		printf("[SERVEUR] Mot à deviner envoyé à J2\n");
-
-		// ====================  BOUCLE RECEPTION - ENVOI MESSAGE -  BOUCLE DE JEU  ====================
-		int partie_terminee = 0;
-		while (!partie_terminee)
-		{
-			// J2 -> Serveur -> J1 (proposition dlelettre)
-			// Réception de la proposition de lettre du joueur 2
-			memset(bufferGeneral, 0x00, LG_MESSAGE);
-			lus = recv(socketJ2, bufferGeneral, LG_MESSAGE - 1, 0);
-			// Erreur de réception
-			if (lus <= 0)
-			{
-				perror("Erreur de réception de la proposition de lettre depuis J2");
-				break; // On repasse à une nouvelle partie retour début boucle
-			}
-			// Réception réussie
-			bufferGeneral[lus] = '\0'; // On termine la chaîne reçue
-			printf("[SERVEUR] Lettre proposée reçue de J2 : %s\n",
-				   bufferGeneral);
-			// Envoi de la proposition de lettre au joueur 1
-			ecrits = send(socketJ1, bufferGeneral, strlen(bufferGeneral), 0);
-			// Erreur d'envoi
-			if (ecrits <= 0)
-			{
-				perror("Erreur d'envoi de la proposition de lettre à J1");
-				break; // On repasse à une nouvelle partie retour début boucle
-			}
-			// Envoi réussi
-			printf("[SERVEUR] Lettre proposée envoyée à J1\n");
-
-			// J1 -> serveur -> J2 (résultat de la proposition)
-
-			// Réception du résultat de la proposition de lettre du joueur 1
+			// Le fils a pas besoin d'écouter car il njoue
+			close(socketEcoute);
+			// ====================  RECUPERER MOT A DEVINER ====================
+			// On reçoit le mot à deviner du joueur 1
 			memset(bufferGeneral, 0x00, LG_MESSAGE);
 			lus = recv(socketJ1, bufferGeneral, LG_MESSAGE - 1, 0);
-			// Erreur de réception
 			if (lus <= 0)
 			{
-				perror("Erreur de réception du résultat de la proposition depuis J1");
-				break; // On repasse à une nouvelle partie retour début boucle
+				perror("Erreur de réception du mot à deviner depuis J1");
+				close(socketJ1);
+				close(socketJ2);
+				exit(-1); // On repasse à une nouvelle partie retour début boucle
 			}
-			// Réception réussie
 			bufferGeneral[lus] = '\0'; // On termine la chaîne reçue
-			printf("[SERVEUR] Résultat de la proposition reçue de J1 : %s\n",
-				   bufferGeneral);
+			printf("[SERVEUR - FILS - PID : %d] Mot à deviner reçu de J1 : %s\n",
+				   getpid(), bufferGeneral);
 
-			if (strcasestr(bufferGeneral, "VICTOIRE") != NULL || strcasestr(bufferGeneral, "DEFAITE") != NULL)
-			{
-				printf("[SERVEUR] La partie est terminée avec le résultat : %s\n", bufferGeneral);
-				partie_terminee = 1;
-			}
-			// Envoi du résultat de la proposition au joueur 2
-			// memset(bufferGeneral, 0x00, LG_MESSAGE); // A retirer car vide avant lenvoie ?????
 			ecrits = send(socketJ2, bufferGeneral, strlen(bufferGeneral), 0);
-			// Erreur d'envoi
 			if (ecrits <= 0)
 			{
-				perror("Erreur d'envoi du résultat de la proposition à J2");
-				break; // NOuvelle partie
+				perror("Erreur d'envoi du mot à deviner à J2");
+				close(socketJ1);
+				close(socketJ2);
+				close(socketJ2);
+				exit(-2); // On repasse à une nouvelle partie retour début boucle
 			}
-			// Envoi réussi
-			printf("[SERVEUR] Résultat de la proposition envoyée à J2\n");
+			printf("[SERVEUR - FILS - PID : %d] Mot à deviner envoyé à J2\n", getpid());
 
-		} // Fin de la boucle de jeu
-		close(socketJ1); // on ferme le dialogue pour eviter de rester sur le receive du debut
-		close(socketJ2); // on ferme le dialogue pour eviter de rester sur le receive du debut
+			// ====================  BOUCLE RECEPTION - ENVOI MESSAGE -  BOUCLE DE JEU  ====================
+			int partie_terminee = 0;
+			while (!partie_terminee)
+			{
+				// J2 -> Serveur -> J1 (proposition dlelettre)
+				// Réception de la proposition de lettre du joueur 2
+				memset(bufferGeneral, 0x00, LG_MESSAGE);
+				lus = recv(socketJ2, bufferGeneral, LG_MESSAGE - 1, 0);
+				// Erreur de réception
+				if (lus <= 0)
+				{
+					perror("Erreur de réception de la proposition de lettre depuis J2");
+					break; // On repasse à une nouvelle partie retour début boucle
+				}
+				// Réception réussie
+				bufferGeneral[lus] = '\0'; // On termine la chaîne reçue
+				printf("\n[SERVEUR - FILS - PID : %d] Lettre proposée reçue de J2 : %s\n",
+					   getpid(), bufferGeneral);
+				// Envoi de la proposition de lettre au joueur 1
+				ecrits = send(socketJ1, bufferGeneral, strlen(bufferGeneral), 0);
+				// Erreur d'envoi
+				if (ecrits <= 0)
+				{
+					perror("Erreur d'envoi de la proposition de lettre à J1");
+					break; // On repasse à une nouvelle partie retour début boucle
+				}
+				// Envoi réussi
+				printf("[SERVEUR - FILS - PID : %d] Lettre proposée envoyée à J1\n", getpid());
+
+				// J1 -> serveur -> J2 (résultat de la proposition)
+
+				// Réception du résultat de la proposition de lettre du joueur 1
+				memset(bufferGeneral, 0x00, LG_MESSAGE);
+				lus = recv(socketJ1, bufferGeneral, LG_MESSAGE - 1, 0);
+				// Erreur de réception
+				if (lus <= 0)
+				{
+					perror("Erreur de réception du résultat de la proposition depuis J1");
+					break; // On repasse à une nouvelle partie retour début boucle
+				}
+				// Réception réussie
+				bufferGeneral[lus] = '\0'; // On termine la chaîne reçue
+				printf("[SERVEUR - FILS - PID : %d] Résultat de la proposition reçue de J1 : %s\n",
+					   getpid(), bufferGeneral);
+
+				if (strcasestr(bufferGeneral, "VICTOIRE") != NULL || strcasestr(bufferGeneral, "DEFAITE") != NULL)
+				{
+					printf("[SERVEUR - FILS - PID : %d] La partie est terminée avec le résultat : %s\n", getpid(), bufferGeneral);
+					partie_terminee = 1;
+				}
+				// Envoi du résultat de la proposition au joueur 2
+				// memset(bufferGeneral, 0x00, LG_MESSAGE); // A retirer car vide avant lenvoie ?????
+				ecrits = send(socketJ2, bufferGeneral, strlen(bufferGeneral), 0);
+				// Erreur d'envoi
+				if (ecrits <= 0)
+				{
+					perror("Erreur d'envoi du résultat de la proposition à J2");
+					break; // NOuvelle partie
+				}
+				// Envoi réussi
+				printf("[SERVEUR - FILS - PID : %d] Résultat de la proposition envoyée à J2\n", getpid());
+
+			} // Fin de la boucle de jeu
+
+			// ON ferme les sockets car le père en a plus besoin
+			close(socketJ1);
+			close(socketJ2);
+			exit(0); // terminer programme fils
+
+		default:
+			// ON ferme les sockets car le père en a plus besoin
+			close(socketJ1);
+			close(socketJ2);
+			continue; // On repasse à une nouvelle partie retour début boucle
+		}
 	}
 	close(socketEcoute);
 	return 0;
