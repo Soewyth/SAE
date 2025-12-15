@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     sockaddrDistant.sin_port = htons(port_dest);     // Numéro de port du serveur
     inet_aton(ip_dest, &sockaddrDistant.sin_addr);   // Conversion de l’adresse IP
 
-    // Débute la connexion vers le processus serveur distant
+    // Débute la connexion vers le serveur distant
     if ((connect(descripteurSocket, (struct sockaddr *)&sockaddrDistant, longueurAdresse)) == -1)
     {
         perror("Erreur de connection avec le serveur distant...");
@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
     printf("[MESSAGE RECU] : %s\n", messageReponse);
 
     // Le serveur doit répondre : "start [longueur] [masque]" (ex: "start 4 ____")
-    if (sscanf(messageReponse, "%s %d %s", status_mot, &longueur_mot, mot_affiche) == 3)
+    if (sscanf(messageReponse, "%s %d %s", status_mot, &longueur_mot, mot_affiche) == 3) // 3 car on vérifie que kes 3 elem sont parsés
     {
 
         partie_en_cours = 1;
@@ -148,15 +148,6 @@ int main(int argc, char *argv[])
             partie_en_cours = 0;
             break;
         }
-
-        // GEstion du message de mise à jour
-        // if (sscanf(messageReponse,
-        //            "Il vous reste %d essais restants. %s",
-        //            &essais_restants, mot_affiche) == 2)
-        // {
-        //     printf("\n--- %d essais restants. Nouvel état: %s ---\n",
-        //            essais_restants, mot_affiche);
-        // }
     }
 
     printf("\nPartie terminee. Fermeture de la socket.\n");
