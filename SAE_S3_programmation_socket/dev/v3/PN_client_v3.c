@@ -11,7 +11,7 @@
 
 #define LG_MESSAGE 256
 #define MAX_WORD_LENGTH 20 // On augmente un peu la taille pour le Pendu
-const char *DEVINER_MOT = "TEST";
+char DEVINER_MOT[MAX_WORD_LENGTH + 1];
 #define NB_ESSAIS_MAX 6
 
 int main(int argc, char *argv[])
@@ -91,6 +91,39 @@ int main(int argc, char *argv[])
 
     if (role == 1)
     {
+        //  demander le mot à faire deviner
+        char bufferMot[MAX_WORD_LENGTH + 2]; // +2 pour le '\n' et le '\0'
+
+        printf("Entrez le mot à faire deviner (max %d lettres) : ", MAX_WORD_LENGTH);
+        if (fgets(bufferMot, sizeof(bufferMot), stdin) == NULL)
+        {
+            fprintf(stderr, "Erreur de lecture du mot à faire deviner.\n");
+            close(descripteurSocket);
+            exit(-3);
+        }
+
+        // Remplace le '\n' par '\0' (\n du fgets par fin de chaîne (\0))
+        bufferMot[strcspn(bufferMot, "\n")] = '\0';
+
+        // Vérifier longueur > 0
+        if (strlen(bufferMot) == 0)
+        {
+            fprintf(stderr, "Le mot ne peut pas être vide.\n");
+            close(descripteurSocket);
+            exit(-4);
+        }
+
+        // Copier dans DEVINER_MOT pour le jeu
+        strncpy(DEVINER_MOT, bufferMot, MAX_WORD_LENGTH);
+
+        // Mettre le mot en majuscules car on fait toupper sur les propositions
+        for (int i = 0; DEVINER_MOT[i] != '\0'; i++)
+        {
+            DEVINER_MOT[i] = (char)toupper(DEVINER_MOT[i]);
+        }
+
+        // ================= PARTIE PENDU ================= //
+
         // déclaration variables partie pendu
         int length_mot = strlen(DEVINER_MOT); // longueur du mot à deviner
         char masque_mot[LG_MESSAGE];          // mot masqué envoyé au client
