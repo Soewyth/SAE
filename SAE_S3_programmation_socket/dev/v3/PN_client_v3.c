@@ -10,8 +10,8 @@
 #include <strings.h>    /* pour strcasecmp (comparaison de chaînes sans casse) */
 
 #define LG_MESSAGE 256
-#define MAX_WORD_LENGTH 20 // On augmente un peu la taille pour le Pendu
-char DEVINER_MOT[MAX_WORD_LENGTH + 1];
+#define MAX_WORD_LENGTH 20
+char DEVINER_MOT[MAX_WORD_LENGTH + 1]; // Mot a deviner  pour le Joueur 1  -> +1 pour le '\0'
 #define NB_ESSAIS_MAX 6
 
 int main(int argc, char *argv[])
